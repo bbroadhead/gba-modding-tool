@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GBA Translation Lab — Read-Only ROM Analyzer</title>
+  <title>GBA Translation Lab — Translation Workbench</title>
   <style>
     :root {
       --bg: #10141b;
@@ -241,6 +241,17 @@
 
     .small { font-size: .82rem; }
 
+    .badge { display:inline-block; padding:2px 7px; border-radius:999px; background:#29394b; font:11px var(--mono); }
+    .badge.good { color:var(--good); }
+    .badge.warn { color:var(--warn); }
+    .editor-table textarea { min-height:58px; min-width:240px; white-space:pre-wrap; }
+    .editor-table input[type="checkbox"] { width:auto; }
+    .editor-table tbody tr { cursor:default; }
+    .compact-input { width:130px; }
+    canvas.pixel-view { image-rendering:pixelated; width:100%; max-width:512px; background:#070a0e; border:1px solid var(--line); }
+    .progress { height:8px; border-radius:4px; background:#0b1016; overflow:hidden; margin-top:8px; }
+    .progress > span { display:block; height:100%; width:0; background:var(--accent); }
+
     @media (max-width: 900px) {
       .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 {
         grid-column: 1 / -1;
@@ -252,12 +263,12 @@
 <header>
   <h1>GBA Translation Lab</h1>
   <p class="muted">
-    Local, read-only ROM reconnaissance for translation and reverse-engineering workflows.
+    Local ROM analysis, script extraction, translation editing, safe reinsertion, and patch creation.
     No ROM data is uploaded by this page.
   </p>
   <p class="warning">
-    Findings are hypotheses. Confirm text encoding, pointer structures, compression, and rendering behavior
-    with emulator debugging and in-game testing before making modifications.
+    Work from a legally obtained backup and keep the original unchanged. Automated findings remain hypotheses;
+    test every generated patch in an emulator before distributing it.
   </p>
 </header>
 
@@ -288,11 +299,12 @@
         <li>Run the ROM-pointer scan to identify candidate pointer tables and nearby targets.</li>
         <li>Enter a provisional <code>.tbl</code> mapping when you learn the game’s encoding.</li>
         <li>Use the hex and decode panels to compare hypotheses against observed game text.</li>
-        <li>Validate every conclusion in an emulator before building an extractor, inserter, or patch pipeline.</li>
+        <li>Build a project, translate confirmed entries, validate, and export a ROM or IPS/BPS patch.</li>
       </ol>
       <p class="muted small">
-        This tool does not identify compressed text, custom script engines, variable-width fonts,
-        or control codes automatically. It is intended to reduce the initial reconnaissance workload.
+        Standard GBA LZ77, table-defined control codes, relocation, pointer repair, font inspection, and graphics
+        archives are supported. Custom script engines, compression, palettes, and variable-width-font code still
+        require game-specific reverse engineering and emulator testing.
       </p>
     </div>
   </section>
@@ -515,6 +527,119 @@
         <button id="downloadReportBtn" disabled>Download JSON Report</button>
       </div>
       <pre id="reportOutput">No report generated.</pre>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>5. Validated Script Workspace</h2>
+    <p class="muted small">
+      Cross-references mixed Shift-JIS strings with every ROM pointer, scores likely script entries, and creates
+      an editable project. Pointer-backed entries are the safest starting point; confirm them in-game before release.
+    </p>
+    <div class="settings">
+      <div><label for="workTextStart">Text start offset</label><input id="workTextStart" value="0x00000000"></div>
+      <div><label for="workTextEnd">Text end offset</label><input id="workTextEnd" placeholder="blank = ROM end"></div>
+      <div><label for="workMinJapanese">Minimum Japanese characters</label><input id="workMinJapanese" type="number" min="1" value="3"></div>
+      <div><label for="workMaxResults">Maximum workspace entries</label><input id="workMaxResults" type="number" min="1" max="50000" value="10000"></div>
+      <div><label for="confidenceFilter">Minimum confidence</label><input id="confidenceFilter" type="number" min="0" max="100" value="45"></div>
+      <div><label for="pointerOnly"><input id="pointerOnly" type="checkbox"> Show pointer-backed entries only</label></div>
+    </div>
+    <div class="button-row">
+      <button id="buildWorkspaceBtn" disabled>Analyze and Build Workspace</button>
+      <button id="exportProjectBtn" disabled>Export Project JSON</button>
+      <button id="exportCsvBtn" disabled>Export Translation CSV</button>
+      <button id="importProjectBtn">Import Project JSON</button>
+      <input id="projectFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="progress"><span id="analysisProgress"></span></div>
+    <div id="workspaceStatus" class="status">Load a ROM, then analyze it.</div>
+    <div class="scroll" style="max-height:620px;margin-top:12px">
+      <table class="editor-table">
+        <thead><tr><th>Use</th><th>Offset / confidence</th><th>References</th><th>Japanese source</th><th>English translation</th><th>Size</th></tr></thead>
+        <tbody id="workspaceBody"><tr><td colspan="6" class="muted">No workspace entries.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card span-6">
+      <h2>6. Compression Inspector</h2>
+      <p class="muted small">Finds standard BIOS-compatible GBA LZ77 <code>0x10</code> streams. Selected streams can be decompressed, edited externally, recompressed, and downloaded for inspection.</p>
+      <div class="settings">
+        <div><label for="lzStart">Scan start</label><input id="lzStart" value="0x00000000"></div>
+        <div><label for="lzEnd">Scan end</label><input id="lzEnd" placeholder="blank = ROM end"></div>
+      </div>
+      <div class="button-row"><button id="scanLzBtn" disabled>Scan LZ77 Streams</button><button id="downloadLzBtn" disabled>Download Selected Decompressed Data</button></div>
+      <div id="lzStatus" class="status">Load a ROM before scanning.</div>
+      <div class="scroll" style="max-height:260px;margin-top:10px"><table><thead><tr><th>Offset</th><th>Compressed</th><th>Decompressed</th></tr></thead><tbody id="lzBody"><tr><td colspan="3" class="muted">No results.</td></tr></tbody></table></div>
+    </div>
+
+    <div class="card span-6">
+      <h2>7. Font and Tile Inspector</h2>
+      <p class="muted small">Preview raw 1bpp, 2bpp, or 4bpp 8×8 tiles to locate font glyphs. This is a visual aid because games may use custom layouts or compression.</p>
+      <div class="settings">
+        <div><label for="tileOffset">Tile offset</label><input id="tileOffset" value="0x00000000"></div>
+        <div><label for="tileBpp">Bits per pixel</label><select id="tileBpp"><option value="1">1bpp</option><option value="2">2bpp</option><option value="4" selected>4bpp</option></select></div>
+        <div><label for="tileCount">Tile count</label><input id="tileCount" type="number" min="1" max="1024" value="128"></div>
+        <div><label for="tileColumns">Columns</label><input id="tileColumns" type="number" min="1" max="32" value="16"></div>
+      </div>
+      <button id="renderTilesBtn" disabled>Render Tiles</button>
+      <canvas id="tileCanvas" class="pixel-view" width="128" height="64"></canvas>
+      <div id="tileStatus" class="status">Load a ROM before rendering.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>8. Graphics Archive Extractor</h2>
+    <p class="muted small">
+      Creates a ZIP containing lossless PNG tile sheets, decompressed standard LZ77 blocks, and a JSON manifest.
+      Raw sheets are exhaustive for the selected range, so they also contain non-graphics data that happens to decode as tiles.
+      Game-specific palettes, sprite assemblies, and tilemaps may require emulator-assisted reconstruction.
+    </p>
+    <div class="settings">
+      <div><label for="gfxStart">ROM range start</label><input id="gfxStart" value="0x00000000"></div>
+      <div><label for="gfxEnd">ROM range end</label><input id="gfxEnd" placeholder="blank = ROM end"></div>
+      <div><label for="gfxBpp">Raw tile format</label><select id="gfxBpp"><option value="1">1bpp</option><option value="2">2bpp</option><option value="4" selected>4bpp</option><option value="8">8bpp</option></select></div>
+      <div><label for="gfxTilesPerSheet">Tiles per PNG sheet</label><input id="gfxTilesPerSheet" type="number" min="64" max="4096" value="1024"></div>
+      <div><label for="gfxColumns">Sheet columns</label><input id="gfxColumns" type="number" min="1" max="64" value="32"></div>
+      <div><label><input id="gfxIncludeLz" type="checkbox" checked> Include valid LZ77 streams and previews</label></div>
+    </div>
+    <div class="button-row"><button id="extractGraphicsBtn" disabled>Extract Graphics ZIP</button><button id="cancelGraphicsBtn" disabled>Cancel</button></div>
+    <div class="progress"><span id="graphicsProgress"></span></div>
+    <div id="graphicsStatus" class="status">Load a ROM before extracting graphics.</div>
+  </section>
+
+  <section class="grid">
+    <div class="card span-5">
+      <h2>9. Binary Asset Inserter</h2>
+      <p class="muted small">Insert an externally edited font, tile set, or recompressed data block into a known reserved region. The size guard prevents overwriting adjacent data.</p>
+      <label for="assetFile">Raw binary asset</label><input id="assetFile" type="file" accept=".bin,.lz,.gfx,application/octet-stream">
+      <div class="settings">
+        <div><label for="assetOffset">Destination offset</label><input id="assetOffset" value="0x00000000"></div>
+        <div><label for="assetMaxLength">Reserved region length</label><input id="assetMaxLength" value="0"></div>
+      </div>
+      <button id="applyAssetBtn" disabled>Stage Asset Change</button>
+      <div id="assetStatus" class="status">Choose an asset and load a ROM.</div>
+    </div>
+
+    <div class="card span-7">
+      <h2>10. Build ROM and Translation Patch</h2>
+      <p class="muted small">Short translations remain in place. Longer translations move into confirmed free space and every known pointer to the original string is updated. The GBA header checksum is repaired automatically.</p>
+      <div class="settings">
+        <div><label for="buildPointerBase">ROM address base</label><input id="buildPointerBase" value="0x08000000"></div>
+        <div><label for="buildPadByte">In-place padding byte</label><input id="buildPadByte" value="0x00"></div>
+        <div><label for="freeStart">Free-space search start</label><input id="freeStart" placeholder="default = final 1 MiB"></div>
+        <div><label for="freeEnd">Free-space search end</label><input id="freeEnd" placeholder="default = ROM end"></div>
+      </div>
+      <div class="button-row">
+        <button id="validateBuildBtn" disabled>Validate Build</button>
+        <button id="buildRomBtn" disabled>Build Patched ROM</button>
+        <button id="downloadRomBtn" disabled>Download Patched ROM</button>
+        <button id="downloadIpsBtn" disabled>Download IPS</button>
+        <button id="downloadBpsBtn" disabled>Download BPS</button>
+      </div>
+      <div id="buildStatus" class="status">Create a script workspace before building.</div>
+      <pre id="buildLog" style="margin-top:10px;max-height:260px">No build yet.</pre>
     </div>
   </section>
 </main>
@@ -1074,5 +1199,7 @@
   });
 })();
 </script>
+<script src="gba-core.js"></script>
+<script src="translation-workbench.js"></script>
 </body>
 </html>
