@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GBA Translation Lab — Read-Only ROM Analyzer</title>
+  <style>
+    :root {
+      --bg: #10141b;
+      --panel: #181f2a;
+      --panel2: #212a37;
+      --line: #364456;
+      --text: #e8eef7;
+      --muted: #9fb0c5;
+      --accent: #5bb7ff;
+      --good: #5de0a5;
+      --warn: #ffd166;
+      --bad: #ff6b6b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 22px max(20px, calc((100vw - 1400px) / 2));
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(110deg, #141b25, #10141b);
+    }
+
+    h1, h2, h3 { margin: 0 0 8px; }
+    h1 { font-size: 1.45rem; }
+    h2 { font-size: 1.1rem; }
+    h3 { font-size: .95rem; color: var(--accent); }
+
+    p { margin: 6px 0; }
+    .muted { color: var(--muted); }
+    .warning {
+      color: var(--warn);
+      border-left: 3px solid var(--warn);
+      padding-left: 10px;
+      margin-top: 12px;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    label {
+      display: block;
+      font-size: .83rem;
+      color: var(--muted);
+      margin: 9px 0 4px;
+    }
+
+    input, textarea, select, button {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #0e131a;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 8px;
+    }
+
+    textarea {
+      font-family: var(--mono);
+      min-height: 170px;
+      resize: vertical;
+      white-space: pre;
+    }
+
+    button {
+      cursor: pointer;
+      background: #19314a;
+      border-color: #2d6390;
+      font-weight: 650;
+      margin-top: 10px;
+    }
+
+    button:hover:not(:disabled) { background: #214363; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .button-row button {
+      width: auto;
+      margin-top: 10px;
+    }
+
+    .settings {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .settings .full { grid-column: 1 / -1; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 10px;
+    }
+
+    .stat {
+      background: var(--panel2);
+      padding: 9px;
+      border-radius: 6px;
+    }
+
+    .stat b {
+      display: block;
+      color: var(--accent);
+      font-family: var(--mono);
+      overflow-wrap: anywhere;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      background: #0d1721;
+      border-left: 3px solid var(--accent);
+      white-space: pre-wrap;
+    }
+
+    .status.good { border-left-color: var(--good); }
+    .status.warn { border-left-color: var(--warn); }
+    .status.bad { border-left-color: var(--bad); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .85rem;
+    }
+
+    th, td {
+      padding: 7px 8px;
+      border-bottom: 1px solid #2d3948;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--panel2);
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #1e3043; }
+    tbody tr.selected { background: #244d70; }
+
+    .scroll {
+      overflow: auto;
+      max-height: 430px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0b1016;
+      color: #d9e6f6;
+      overflow: auto;
+      max-height: 430px;
+      font: 12px/1.42 var(--mono);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    code {
+      font-family: var(--mono);
+      color: #b8dcff;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tabs button {
+      width: auto;
+      margin: 0;
+      background: #172433;
+    }
+
+    .tabs button.active {
+      background: #24517a;
+      border-color: var(--accent);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .small { font-size: .82rem; }
+
+    @media (max-width: 900px) {
+      .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 {
+        grid-column: 1 / -1;
+      }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>GBA Translation Lab</h1>
+  <p class="muted">
+    Local, read-only ROM reconnaissance for translation and reverse-engineering workflows.
+    No ROM data is uploaded by this page.
+  </p>
+  <p class="warning">
+    Findings are hypotheses. Confirm text encoding, pointer structures, compression, and rendering behavior
+    with emulator debugging and in-game testing before making modifications.
+  </p>
+</header>
+
+<main>
+  <section class="grid">
+    <div class="card span-5">
+      <h2>1. Load ROM</h2>
+      <label for="romFile">Select a local GBA ROM file</label>
+      <input id="romFile" type="file" accept=".gba,.bin,application/octet-stream">
+
+      <div class="stat-grid">
+        <div class="stat"><span class="muted">File</span><b id="statFile">Not loaded</b></div>
+        <div class="stat"><span class="muted">Size</span><b id="statSize">—</b></div>
+        <div class="stat"><span class="muted">Internal title</span><b id="statTitle">—</b></div>
+        <div class="stat"><span class="muted">Game code</span><b id="statCode">—</b></div>
+        <div class="stat"><span class="muted">Maker code</span><b id="statMaker">—</b></div>
+        <div class="stat"><span class="muted">Header checksum</span><b id="statChecksum">—</b></div>
+      </div>
+
+      <div id="loadStatus" class="status">Select a ROM to begin.</div>
+    </div>
+
+    <div class="card span-7">
+      <h2>Workflow</h2>
+      <ol class="small">
+        <li>Load a local ROM and record the header information and hash in your research notes.</li>
+        <li>Run the Japanese-text candidate scan to locate likely uncompressed dialogue or menu text.</li>
+        <li>Run the ROM-pointer scan to identify candidate pointer tables and nearby targets.</li>
+        <li>Enter a provisional <code>.tbl</code> mapping when you learn the game’s encoding.</li>
+        <li>Use the hex and decode panels to compare hypotheses against observed game text.</li>
+        <li>Validate every conclusion in an emulator before building an extractor, inserter, or patch pipeline.</li>
+      </ol>
+      <p class="muted small">
+        This tool does not identify compressed text, custom script engines, variable-width fonts,
+        or control codes automatically. It is intended to reduce the initial reconnaissance workload.
+      </p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card span-6">
+      <h2>2. Japanese Text Candidate Scan</h2>
+      <p class="muted small">
+        Searches for runs of plausible Shift-JIS-style double-byte characters. Results may include
+        false positives, graphics data, compressed data, or unrelated tables.
+      </p>
+
+      <div class="settings">
+        <div>
+          <label for="textStart">Start offset (hex)</label>
+          <input id="textStart" value="0x00000000">
+        </div>
+        <div>
+          <label for="textEnd">End offset (hex; blank = ROM end)</label>
+          <input id="textEnd" placeholder="0x01000000">
+        </div>
+        <div>
+          <label for="minJapaneseChars">Minimum Japanese characters</label>
+          <input id="minJapaneseChars" type="number" min="2" max="1000" value="6">
+        </div>
+        <div>
+          <label for="maxTextResults">Maximum results</label>
+          <input id="maxTextResults" type="number" min="10" max="100000" value="1000">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="scanTextBtn" disabled>Scan for Japanese Text Candidates</button>
+        <button id="clearTextBtn" disabled>Clear Text Results</button>
+      </div>
+      <div id="textStatus" class="status">Load a ROM before scanning.</div>
+    </div>
+
+    <div class="card span-6">
+      <h2>3. ROM Pointer Scan</h2>
+      <p class="muted small">
+        Looks for aligned 32-bit little-endian values that point into the conventional GBA ROM address range.
+        A hit is not proof of a text pointer: it may point to code, graphics, data, or a table.
+      </p>
+
+      <div class="settings">
+        <div>
+          <label for="pointerStart">Start offset (hex)</label>
+          <input id="pointerStart" value="0x00000000">
+        </div>
+        <div>
+          <label for="pointerEnd">End offset (hex; blank = ROM end)</label>
+          <input id="pointerEnd" placeholder="0x01000000">
+        </div>
+        <div>
+          <label for="pointerBase">ROM address base</label>
+          <input id="pointerBase" value="0x08000000">
+        </div>
+        <div>
+          <label for="maxPointerResults">Maximum results</label>
+          <input id="maxPointerResults" type="number" min="10" max="100000" value="2000">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="scanPointersBtn" disabled>Scan for ROM Pointers</button>
+        <button id="clearPointersBtn" disabled>Clear Pointer Results</button>
+      </div>
+      <div id="pointerStatus" class="status">Load a ROM before scanning.</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card span-5">
+      <h2>4. Provisional Table Decoder</h2>
+      <p class="muted small">
+        Enter one mapping per line in <code>HEX=VALUE</code> form. Multi-byte tokens are allowed.
+        Example: <code>8140=　</code>, <code>00=[END]</code>, <code>FE01=[PAUSE]</code>.
+        The longest matching token takes priority.
+      </p>
+
+      <label for="tblInput">.tbl-style mapping</label>
+      <textarea id="tblInput">00=[END]
+0A=[NL]
+20=
+41=A
+42=B
+43=C
+44=D
+45=E
+46=F
+47=G
+48=H
+49=I
+4A=J
+4B=K
+4C=L
+4D=M
+4E=N
+4F=O
+50=P
+51=Q
+52=R
+53=S
+54=T
+55=U
+56=V
+57=W
+58=X
+59=Y
+5A=Z
+61=a
+62=b
+63=c
+64=d
+65=e
+66=f
+67=g
+68=h
+69=i
+6A=j
+6B=k
+6C=l
+6D=m
+6E=n
+6F=o
+70=p
+71=q
+72=r
+73=s
+74=t
+75=u
+76=v
+77=w
+78=x
+79=y
+7A=z</textarea>
+
+      <div class="settings">
+        <div>
+          <label for="decodeOffset">Decode offset (hex)</label>
+          <input id="decodeOffset" value="0x00000000">
+        </div>
+        <div>
+          <label for="decodeLength">Maximum bytes to decode</label>
+          <input id="decodeLength" type="number" min="1" max="65536" value="256">
+        </div>
+        <div class="full">
+          <label for="terminators">Stop bytes/tokens, comma-separated (hex)</label>
+          <input id="terminators" value="00">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="decodeBtn" disabled>Decode at Offset</button>
+        <button id="downloadTblBtn">Download Current Table</button>
+      </div>
+      <div id="decodeStatus" class="status">Load a ROM before decoding.</div>
+    </div>
+
+    <div class="card span-7">
+      <h2>Decoded Output</h2>
+      <pre id="decodedOutput">No decoded output yet.</pre>
+
+      <h3 style="margin-top:16px">Hex View</h3>
+      <pre id="hexOutput">No offset selected.</pre>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="tabs">
+      <button class="active" data-tab="textTab">Text Candidates (<span id="textCount">0</span>)</button>
+      <button data-tab="pointerTab">Pointer Candidates (<span id="pointerCount">0</span>)</button>
+      <button data-tab="reportTab">Research Report</button>
+    </div>
+
+    <div id="textTab" class="tab-panel active">
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ROM Offset</th>
+              <th>Length</th>
+              <th>Shift-JIS Decode Preview</th>
+              <th>Raw Bytes</th>
+            </tr>
+          </thead>
+          <tbody id="textResultsBody">
+            <tr><td colspan="4" class="muted">No text scan results.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="pointerTab" class="tab-panel">
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Pointer Location</th>
+              <th>Raw Value</th>
+              <th>Target ROM Offset</th>
+              <th>Target Preview</th>
+            </tr>
+          </thead>
+          <tbody id="pointerResultsBody">
+            <tr><td colspan="4" class="muted">No pointer scan results.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="reportTab" class="tab-panel">
+      <p class="muted small">
+        Export a JSON research report containing ROM metadata, scan settings, and current candidate results.
+        The report does not include the full ROM.
+      </p>
+      <div class="button-row">
+        <button id="buildReportBtn" disabled>Generate Research Report</button>
+        <button id="downloadReportBtn" disabled>Download JSON Report</button>
+      </div>
+      <pre id="reportOutput">No report generated.</pre>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const state = {
+    fileName: "",
+    bytes: null,
+    header: null,
+    textResults: [],
+    pointerResults: [],
+    report: null,
+    selectedOffset: null
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function hex(value, width = 8) {
+    return "0x" + (Number(value) >>> 0).toString(16).toUpperCase().padStart(width, "0");
+  }
+
+  function bytesToHex(bytes, limit = 48) {
+    const slice = bytes.slice(0, limit);
+    const out = Array.from(slice, b => b.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+    return bytes.length > limit ? out + " …" : out;
+  }
+
+  function printableAscii(bytes) {
+    return Array.from(bytes, b => (b >= 0x20 && b <= 0x7E) ? String.fromCharCode(b) : ".").join("");
+  }
+
+  function parseNumber(value, fallback = null) {
+    const v = String(value ?? "").trim();
+    if (!v) return fallback;
+    if (/^0x/i.test(v)) {
+      const parsed = parseInt(v, 16);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    const parsed = Number(v);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function clampRange(start, end, length) {
+    const safeStart = Math.max(0, Math.min(start ?? 0, length));
+    const safeEnd = Math.max(safeStart, Math.min(end ?? length, length));
+    return [safeStart, safeEnd];
+  }
+
+  function setStatus(id, message, kind = "") {
+    const el = $(id);
+    el.textContent = message;
+    el.className = "status " + kind;
+  }
+
+  function readAscii(offset, length) {
+    if (!state.bytes) return "";
+    return printableAscii(state.bytes.slice(offset, Math.min(offset + length, state.bytes.length))).trim();
+  }
+
+  function calculateGbaHeaderChecksum(bytes) {
+    if (bytes.length < 0xBE) return null;
+    let checksum = 0;
+    for (let i = 0xA0; i <= 0xBC; i++) checksum = (checksum - bytes[i] - 1) & 0xFF;
+    return checksum;
+  }
+
+  async function sha256Hex(buffer) {
+    if (!crypto?.subtle) return "Unavailable in this browser";
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+    return Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  function parseHeader() {
+    const b = state.bytes;
+    if (!b || b.length < 0xC0) return null;
+
+    const storedChecksum = b[0xBD];
+    const calculatedChecksum = calculateGbaHeaderChecksum(b);
+
+    return {
+      internalTitle: readAscii(0xA0, 12) || "(blank/unreadable)",
+      gameCode: readAscii(0xAC, 4) || "(blank)",
+      makerCode: readAscii(0xB0, 2) || "(blank)",
+      softwareVersion: b[0xBC],
+      storedChecksum: storedChecksum,
+      calculatedChecksum: calculatedChecksum,
+      checksumMatches: storedChecksum === calculatedChecksum
+    };
+  }
+
+  function updateHeaderUI() {
+    const h = state.header;
+    $("statFile").textContent = state.fileName || "Not loaded";
+    $("statSize").textContent = state.bytes ? `${state.bytes.length.toLocaleString()} bytes (${(state.bytes.length / 1024 / 1024).toFixed(2)} MiB)` : "—";
+    $("statTitle").textContent = h?.internalTitle ?? "—";
+    $("statCode").textContent = h?.gameCode ?? "—";
+    $("statMaker").textContent = h?.makerCode ?? "—";
+    $("statChecksum").textContent = h
+      ? `${hex(h.storedChecksum, 2)} stored / ${hex(h.calculatedChecksum, 2)} calculated${h.checksumMatches ? " ✓" : " (mismatch)"}`
+      : "—";
+  }
+
+  function isSjisLead(b) {
+    return (b >= 0x81 && b <= 0x9F) || (b >= 0xE0 && b <= 0xFC);
+  }
+
+  function isSjisTrail(b) {
+    return (b >= 0x40 && b <= 0x7E) || (b >= 0x80 && b <= 0xFC);
+  }
+
+  function decodeShiftJis(bytes) {
+    try {
+      return new TextDecoder("shift_jis", { fatal: false }).decode(bytes);
+    } catch {
+      return "[Shift-JIS decoding unavailable in this browser]";
+    }
+  }
+
+  function scanJapaneseCandidates() {
+    if (!state.bytes) return;
+
+    const startInput = parseNumber($("textStart").value, 0);
+    const endInput = parseNumber($("textEnd").value, state.bytes.length);
+    const minChars = Math.max(2, parseNumber($("minJapaneseChars").value, 6));
+    const maxResults = Math.max(10, parseNumber($("maxTextResults").value, 1000));
+    const [start, end] = clampRange(startInput, endInput, state.bytes.length);
+
+    setStatus("textStatus", `Scanning ${hex(start)}–${hex(end)}…`, "");
+
+    setTimeout(() => {
+      const results = [];
+      let i = start;
+
+      while (i < end - 1 && results.length < maxResults) {
+        const runStart = i;
+        let charCount = 0;
+        let lastGood = i;
+
+        while (i < end - 1 && isSjisLead(state.bytes[i]) && isSjisTrail(state.bytes[i + 1])) {
+          charCount++;
+          i += 2;
+          lastGood = i;
+        }
+
+        if (charCount >= minChars) {
+          const raw = state.bytes.slice(runStart, lastGood);
+          const text = decodeShiftJis(raw).replace(/\uFFFD/g, " ");
+          results.push({
+            offset: runStart,
+            length: raw.length,
+            charCount,
+            preview: text.slice(0, 180),
+            rawPreview: bytesToHex(raw, 48)
+          });
+        }
+
+        i = (i === runStart) ? i + 1 : i + 1;
+      }
+
+      state.textResults = results;
+      renderTextResults();
+      setStatus(
+        "textStatus",
+        `Scan complete. Found ${results.length} candidate run(s) using a minimum of ${minChars} Shift-JIS-style characters.`,
+        results.length ? "good" : "warn"
+      );
+    }, 20);
+  }
+
+  function getU32LE(offset) {
+    const b = state.bytes;
+    return (b[offset] | (b[offset + 1] << 8) | (b[offset + 2] << 16) | (b[offset + 3] << 24)) >>> 0;
+  }
+
+  function targetPreview(target) {
+    if (target < 0 || target >= state.bytes.length) return "";
+    const raw = state.bytes.slice(target, Math.min(target + 32, state.bytes.length));
+    const ascii = printableAscii(raw);
+    const sjis = decodeShiftJis(raw).replace(/\s+/g, " ").trim();
+    return `ASCII: ${ascii.slice(0, 32)} | SJIS: ${sjis.slice(0, 45)}`;
+  }
+
+  function scanPointers() {
+    if (!state.bytes) return;
+
+    const startInput = parseNumber($("pointerStart").value, 0);
+    const endInput = parseNumber($("pointerEnd").value, state.bytes.length);
+    const base = parseNumber($("pointerBase").value, 0x08000000) >>> 0;
+    const maxResults = Math.max(10, parseNumber($("maxPointerResults").value, 2000));
+    let [start, end] = clampRange(startInput, endInput, state.bytes.length);
+    start = (start + 3) & ~3;
+    end = end & ~3;
+
+    setStatus("pointerStatus", `Scanning aligned 32-bit values from ${hex(start)}–${hex(end)}…`, "");
+
+    setTimeout(() => {
+      const results = [];
+      const maxAddress = base + state.bytes.length;
+
+      for (let offset = start; offset <= end - 4 && results.length < maxResults; offset += 4) {
+        const value = getU32LE(offset);
+        if (value >= base && value < maxAddress) {
+          const target = value - base;
+          results.push({
+            location: offset,
+            value,
+            target,
+            preview: targetPreview(target)
+          });
+        }
+      }
+
+      state.pointerResults = results;
+      renderPointerResults();
+      setStatus(
+        "pointerStatus",
+        `Scan complete. Found ${results.length} in-ROM pointer candidate(s). Base used: ${hex(base)}.`,
+        results.length ? "good" : "warn"
+      );
+    }, 20);
+  }
+
+  function renderTextResults() {
+    const body = $("textResultsBody");
+    $("textCount").textContent = state.textResults.length;
+
+    if (!state.textResults.length) {
+      body.innerHTML = `<tr><td colspan="4" class="muted">No text scan results.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    state.textResults.forEach((r, index) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${hex(r.offset)}</code></td>
+        <td>${r.length} bytes / ${r.charCount} chars</td>
+        <td>${escapeHtml(r.preview)}</td>
+        <td><code>${r.rawPreview}</code></td>
+      `;
+      tr.addEventListener("click", () => {
+        selectRow(body, tr);
+        selectOffset(r.offset, r.length);
+      });
+      body.appendChild(tr);
+    });
+  }
+
+  function renderPointerResults() {
+    const body = $("pointerResultsBody");
+    $("pointerCount").textContent = state.pointerResults.length;
+
+    if (!state.pointerResults.length) {
+      body.innerHTML = `<tr><td colspan="4" class="muted">No pointer scan results.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    state.pointerResults.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${hex(r.location)}</code></td>
+        <td><code>${hex(r.value)}</code></td>
+        <td><code>${hex(r.target)}</code></td>
+        <td>${escapeHtml(r.preview)}</td>
+      `;
+      tr.addEventListener("click", () => {
+        selectRow(body, tr);
+        selectOffset(r.target, 256);
+      });
+      body.appendChild(tr);
+    });
+  }
+
+  function selectRow(body, selected) {
+    body.querySelectorAll("tr").forEach(row => row.classList.remove("selected"));
+    selected.classList.add("selected");
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function hexView(offset, length = 256) {
+    if (!state.bytes) return "No ROM loaded.";
+    const start = Math.max(0, Math.min(offset, state.bytes.length));
+    const end = Math.min(start + length, state.bytes.length);
+    let out = "";
+
+    for (let row = start; row < end; row += 16) {
+      const chunk = state.bytes.slice(row, Math.min(row + 16, end));
+      const byteText = Array.from(chunk, b => b.toString(16).toUpperCase().padStart(2, "0")).join(" ").padEnd(47, " ");
+      out += `${hex(row)}  ${byteText}  |${printableAscii(chunk)}|\n`;
+    }
+
+    return out || "Offset is outside ROM range.";
+  }
+
+  function selectOffset(offset, length = 256) {
+    state.selectedOffset = offset;
+    $("decodeOffset").value = hex(offset);
+    $("hexOutput").textContent = hexView(offset, length);
+  }
+
+  function parseTbl() {
+    const entries = [];
+    const lines = $("tblInput").value.replace(/\r/g, "").split("\n");
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+
+      const eq = line.indexOf("=");
+      if (eq < 1) continue;
+
+      const key = line.slice(0, eq).replace(/\s+/g, "").toUpperCase();
+      const value = line.slice(eq + 1);
+
+      if (!/^[0-9A-F]+$/.test(key) || key.length % 2 !== 0) continue;
+
+      const bytes = [];
+      for (let i = 0; i < key.length; i += 2) bytes.push(parseInt(key.slice(i, i + 2), 16));
+      entries.push({ bytes, value, hex: key });
+    }
+
+    return entries.sort((a, b) => b.bytes.length - a.bytes.length);
+  }
+
+  function parseTerminators() {
+    return $("terminators").value
+      .split(",")
+      .map(v => v.trim().replace(/^0x/i, "").replace(/\s+/g, "").toUpperCase())
+      .filter(v => /^[0-9A-F]+$/.test(v) && v.length % 2 === 0);
+  }
+
+  function matchesAt(bytes, pos, tokenBytes) {
+    if (pos + tokenBytes.length > bytes.length) return false;
+    for (let i = 0; i < tokenBytes.length; i++) {
+      if (bytes[pos + i] !== tokenBytes[i]) return false;
+    }
+    return true;
+  }
+
+  function decodeWithTable() {
+    if (!state.bytes) return;
+
+    const offset = parseNumber($("decodeOffset").value, 0);
+    const maxLength = Math.max(1, parseNumber($("decodeLength").value, 256));
+    const table = parseTbl();
+    const terminators = new Set(parseTerminators());
+
+    if (offset < 0 || offset >= state.bytes.length) {
+      setStatus("decodeStatus", "Decode offset is outside ROM bounds.", "bad");
+      return;
+    }
+
+    const end = Math.min(state.bytes.length, offset + maxLength);
+    let pos = offset;
+    let out = "";
+    let matchedTokens = 0;
+    let stopped = false;
+
+    while (pos < end) {
+      let match = null;
+
+      for (const entry of table) {
+        if (matchesAt(state.bytes, pos, entry.bytes)) {
+          match = entry;
+          break;
+        }
+      }
+
+      if (match) {
+        out += match.value;
+        pos += match.bytes.length;
+        matchedTokens++;
+
+        if (terminators.has(match.hex)) {
+          stopped = true;
+          break;
+        }
+      } else {
+        const raw = state.bytes[pos];
+        const singleHex = raw.toString(16).toUpperCase().padStart(2, "0");
+        out += `{${singleHex}}`;
+        pos++;
+        if (terminators.has(singleHex)) {
+          stopped = true;
+          break;
+        }
+      }
+    }
+
+    $("decodedOutput").textContent =
+      `Offset: ${hex(offset)}\n` +
+      `Bytes consumed: ${pos - offset}\n` +
+      `Mapped tokens: ${matchedTokens}\n` +
+      `Stopped at terminator: ${stopped ? "yes" : "no"}\n\n` +
+      out;
+
+    $("hexOutput").textContent = hexView(offset, Math.max(256, pos - offset));
+    setStatus(
+      "decodeStatus",
+      `Decoded ${pos - offset} byte(s) at ${hex(offset)} using ${table.length} table mapping(s).`,
+      "good"
+    );
+  }
+
+  function buildReport() {
+    if (!state.bytes) return;
+
+    const report = {
+      tool: "GBA Translation Lab",
+      generatedAt: new Date().toISOString(),
+      rom: {
+        fileName: state.fileName,
+        sizeBytes: state.bytes.length,
+        header: state.header
+      },
+      scanSettings: {
+        text: {
+          start: $("textStart").value,
+          end: $("textEnd").value,
+          minJapaneseChars: $("minJapaneseChars").value,
+          maxResults: $("maxTextResults").value
+        },
+        pointers: {
+          start: $("pointerStart").value,
+          end: $("pointerEnd").value,
+          romAddressBase: $("pointerBase").value,
+          maxResults: $("maxPointerResults").value
+        }
+      },
+      provisionalTable: $("tblInput").value,
+      textCandidates: state.textResults,
+      pointerCandidates: state.pointerResults,
+      analystNotes: [
+        "All entries are hypotheses generated through static ROM analysis.",
+        "Validate text encoding, pointer formats, compression, scripts, and rendering behavior in an emulator.",
+        "Do not treat candidate pointer hits as confirmed text pointers without cross-reference evidence."
+      ]
+    };
+
+    state.report = report;
+    $("reportOutput").textContent = JSON.stringify(report, null, 2);
+    $("downloadReportBtn").disabled = false;
+  }
+
+  function downloadText(fileName, text, mime = "text/plain;charset=utf-8") {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function handleFile(file) {
+    if (!file) return;
+
+    if (file.size < 0xC0) {
+      setStatus("loadStatus", "Selected file is too small to contain a standard GBA header.", "bad");
+      return;
+    }
+
+    setStatus("loadStatus", "Reading local file…", "");
+    const buffer = await file.arrayBuffer();
+
+    state.fileName = file.name;
+    state.bytes = new Uint8Array(buffer);
+    state.header = parseHeader();
+    state.textResults = [];
+    state.pointerResults = [];
+    state.report = null;
+
+    updateHeaderUI();
+    renderTextResults();
+    renderPointerResults();
+
+    const digest = await sha256Hex(buffer);
+    setStatus(
+      "loadStatus",
+      `Loaded locally. SHA-256: ${digest}\n` +
+      `Header checksum: ${state.header.checksumMatches ? "matches" : "does not match or uses a nonstandard header."}`,
+      state.header.checksumMatches ? "good" : "warn"
+    );
+
+    [
+      "scanTextBtn", "clearTextBtn", "scanPointersBtn", "clearPointersBtn",
+      "decodeBtn", "buildReportBtn"
+    ].forEach(id => $(id).disabled = false);
+
+    $("decodedOutput").textContent = "ROM loaded. Select a candidate or enter a decode offset.";
+    $("hexOutput").textContent = hexView(0, 256);
+  }
+
+  $("romFile").addEventListener("change", async (event) => {
+    try {
+      await handleFile(event.target.files?.[0]);
+    } catch (err) {
+      console.error(err);
+      setStatus("loadStatus", `Could not load file: ${err.message}`, "bad");
+    }
+  });
+
+  $("scanTextBtn").addEventListener("click", scanJapaneseCandidates);
+  $("scanPointersBtn").addEventListener("click", scanPointers);
+  $("decodeBtn").addEventListener("click", decodeWithTable);
+
+  $("clearTextBtn").addEventListener("click", () => {
+    state.textResults = [];
+    renderTextResults();
+    setStatus("textStatus", "Text candidate results cleared.", "");
+  });
+
+  $("clearPointersBtn").addEventListener("click", () => {
+    state.pointerResults = [];
+    renderPointerResults();
+    setStatus("pointerStatus", "Pointer candidate results cleared.", "");
+  });
+
+  $("buildReportBtn").addEventListener("click", () => {
+    buildReport();
+  });
+
+  $("downloadReportBtn").addEventListener("click", () => {
+    if (!state.report) return;
+    const name = (state.fileName || "gba_rom")
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-z0-9_-]+/gi, "_");
+    downloadText(`${name}_translation_lab_report.json`, JSON.stringify(state.report, null, 2), "application/json");
+  });
+
+  $("downloadTblBtn").addEventListener("click", () => {
+    downloadText("provisional_encoding.tbl", $("tblInput").value, "text/plain;charset=utf-8");
+  });
+
+  document.querySelectorAll("[data-tab]").forEach(button => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-tab]").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      button.classList.add("active");
+      $(button.dataset.tab).classList.add("active");
+    });
+  });
+})();
+</script>
+</body>
+</html>
